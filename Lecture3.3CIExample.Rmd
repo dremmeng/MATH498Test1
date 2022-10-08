@@ -1,0 +1,116 @@
+---
+title: "Confidence Envelope"
+author: "Doug Nychka"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+## Some setup 
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE)
+setwd(
+  "~/Dropbox/Home/Teaching/FDA/theCourse/Modules/Mod03LeastSquaresSmoothing"
+  )
+suppressMessages(library(fda))
+suppressMessages( library(fields))
+```
+
+Loading in a handy R function to create the natural soline basis 
+```{r}
+source("../R/naturalSplineFit.R")
+source("../R/naturalSplineBasis.R")
+```
+
+## Synthetic data example
+
+```{r}
+# synthetic dataset
+set.seed(123)
+N <- 150
+s <- runif(N)
+s <- sort(s)
+true <-  9 * s * (1 - s) ^ 3
+# rnorm generates standard normals 
+# multiply by .1 to get sigma of .1
+errors<- .1 * rnorm(N)
+y <-  true + errors
+plot( s,y)
+lines( s, true, col="magenta", lwd=2)
+title("True curve with data")
+```
+
+\newpage
+
+# Fitting with natural spline and 7 knots 
+
+Natural splines are as many as knots due to the
+  BC at either end ( second deriv. == 0).
+  
+This should be a easy application of the **lm** function. However, 
+I lost an hour figuring out how to get lm to use a basis matrix and 
+then predict!
+The   ```.```   in the code below means use all the variables in 
+the data frame.  Both **Phi** and **PhiGrid** will have the same columns names because they are converted to data frames the same way. 
+  
+```{r}
+
+sKnots <- seq(0, 1, length.out = 7)
+
+# make sure you understand how this function 
+# works
+
+Phi <-  naturalSplineBasis(s, sKnots)
+# omit intercept because it is already included as part of the
+# basis
+Phi<- data.frame( Phi)
+
+
+fit <- lm(y ~ .-1, data=Phi  )
+summary( fit)
+```
+
+
+# prediction intervals on grid 
+
+```{r}
+sGrid <- seq(0, 1, .02)
+PhiGrid <- naturalSplineBasis(sGrid, sKnots)
+# trick is that df gets the same variable names as those in the fit object.
+
+df<- data.frame(PhiGrid)
+
+out<- predict( fit, df  ,
+               se.fit=TRUE )
+ 
+ SE<- out$se.fit
+ fHat<- out$fit
+
+P<- length( sKnots)
+GCV <- (1 / N) * sum(fit$residuals ^ 2) / (1 - P / N) ^ 2
+```
+
+# bonferroni Z
+
+Use ```lower.tail=FALSE``` to find the upper tail probability
+this just makes this easier to read. Compare **zB** below  to 1.96
+
+```{r}
+  zB<- qnorm( .025/length( sGrid), lower.tail = FALSE)
+  zB
+```
+
+  
+\newpage
+
+# Envelope plot 
+
+Here is a way to create a nice  envelope plot. It uses the basic graphics function **polygon**.
+
+```{r}
+plot(s, y, pch=16, cex=.5, type="n")
+envelopePlot(sGrid,fHat - zB*SE,sGrid, fHat + zB*SE )
+points(s, y ,pch=16, cex=.5)
+lines(s, true, lwd = 2, col = "black")
+# fHat 
+lines(sGrid, fHat, col = "red", lty = 1)
+```
